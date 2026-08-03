@@ -1,7 +1,9 @@
 # SPPARK to MUSA 5.2.0 scope and validation receipt
 
-Date: 2026-08-03 (Asia/Shanghai)  
-Task: `f1cb46bc-3d09-4fab-aee7-e9086fcde50d`  
+Date: 2026-08-03 (Asia/Shanghai)
+
+Task: `f1cb46bc-3d09-4fab-aee7-e9086fcde50d`
+
 Scope: audit and plan only; no production source was converted.
 
 ## Decision
