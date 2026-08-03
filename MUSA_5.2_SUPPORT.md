@@ -189,3 +189,13 @@ selection; host-test results; frozen transform parameters and seed; oracle
 method; input/oracle/device digests; mismatch and canonicality counts; device
 activity; skipped checks with reasons; and an explicit supported/unvalidated
 boundary. Never report GO when any required item is skipped or inconclusive.
+
+## Final source-only verification
+
+On 2026-08-04, source-only checks confirmed that every receipt, source, and
+configuration path named above exists, that the embedded S0-S3 receipt hashes
+and commit-parent lineage match the accepted records, and that the supported
+Goldilocks forward/NN/standard `2^20` denominator remains separate from every
+explicitly unvalidated mode. No GPU workload, Python check, or artifact-
+generating command was run; retained binary and runtime-evidence paths remain
+references to the accepted S3 record only.
