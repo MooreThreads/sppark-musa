@@ -5,7 +5,9 @@
 #ifndef __SPPARK_UTIL_GPU_T_CUH__
 #define __SPPARK_UTIL_GPU_T_CUH__
 
-#if defined(__NVCC__) && !defined(__CUDACC__)
+#include "gpu_backend.hpp"
+
+#if SPPARK_CUDA_COMPILER && !defined(__CUDACC__)
 # include <cuda_runtime.h>
 #endif
 
@@ -115,7 +117,7 @@ public:
                                                 size_t shared_sz,
                             Types... args) const
     {
-#ifdef __NVCC__
+#if SPPARK_CUDA_COMPILER || SPPARK_MUSA_COMPILER
         if (gpu_props(gpu_id).sharedMemPerBlock < shared_sz)
             CUDA_OK(cudaFuncSetAttribute(f, cudaFuncAttributeMaxDynamicSharedMemorySize, shared_sz));
 #endif
@@ -362,7 +364,7 @@ public:
     inline T* data() const                      { return d_ptr; }
 };
 
-#if defined(_WIN32) && !defined(__HIP_DEVICE_COMPILE__)
+#if defined(_WIN32) && !SPPARK_GPU_DEVICE
 # define SPPARK_FFI extern "C" __declspec(dllexport)
 #else
 # define SPPARK_FFI extern "C" __attribute__((visibility("default")))

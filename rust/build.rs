@@ -62,21 +62,44 @@ fn main() {
         Err(_) => which::which("hipcc"),
     };
 
-    match (cfg!(feature = "cuda"), cfg!(feature = "rocm")) {
-        (true, true) => panic!("mutually exclusive features"),
-        (true, false) => {
+    println!("cargo:rerun-if-env-changed=MCC");
+    let mut mcc = match env::var("MCC") {
+        Ok(var) => which::which(var),
+        Err(_) => which::which("mcc"),
+    };
+
+    let requested = [
+        cfg!(feature = "cuda"),
+        cfg!(feature = "rocm"),
+        cfg!(feature = "musa"),
+    ];
+    if requested.iter().filter(|&&selected| selected).count() > 1 {
+        panic!("cuda, rocm, and musa features are mutually exclusive");
+    }
+    match requested {
+        [true, false, false] => {
             if nvcc.is_err() {
                 panic!("`nvcc` is not available");
             }
             hipcc = Err(which::Error::CannotFindBinaryPath);
+            mcc = Err(which::Error::CannotFindBinaryPath);
         },
-        (false, true) => {
+        [false, true, false] => {
             if hipcc.is_err() {
                 panic!("`hipcc` is not available");
             }
             nvcc = Err(which::Error::CannotFindBinaryPath);
+            mcc = Err(which::Error::CannotFindBinaryPath);
         },
-        (false, false) => (),
+        [false, false, true] => {
+            if mcc.is_err() {
+                panic!("`mcc` is not available");
+            }
+            nvcc = Err(which::Error::CannotFindBinaryPath);
+            hipcc = Err(which::Error::CannotFindBinaryPath);
+        },
+        [false, false, false] => (),
+        _ => unreachable!(),
     }
 
     // Detect if there is CUDA compiler and engage "cuda" feature accordingly,
@@ -136,6 +159,44 @@ fn main() {
             println!("cargo:TARGET=cuda");
             return;
         }
+    }
+
+    // Detect MUSA after CUDA and before ROCm. Explicit features above always
+    // select exactly one compiler and never require device enumeration.
+    if let Ok(mcc) = mcc {
+        let mcc_version = Command::new(&mcc)
+            .arg("--version")
+            .output()
+            .expect("impossible");
+        if !mcc_version.status.success() {
+            panic!("{:?}", mcc_version);
+        }
+        let mcc_version = String::from_utf8(mcc_version.stdout).unwrap();
+        if !mcc_version.contains("mcc version 5.2.") {
+            panic!("Unsupported MUSA compiler, expected mcc 5.2.x: {}", mcc_version);
+        }
+
+        println!("cargo:rerun-if-env-changed=MUSA_ARCH");
+        let arch = env::var("MUSA_ARCH").unwrap_or_else(|_| "mp_31".to_string());
+        let mut ccmd = cc::Build::new();
+        ccmd.compiler(&mcc);
+        ccmd.cpp(true);
+        ccmd.include(&base_dir);
+        ccmd.flag("-x").flag("musa");
+        ccmd.flag(format!("--offload-arch={}", arch));
+        ccmd.flag("-include").flag("util/cuda2musa.hpp");
+        ccmd.file(&all_gpus).compile("sppark_musa");
+
+        if let Some(toolkit) = mcc.parent().and_then(|bin| bin.parent()) {
+            println!(
+                "cargo:rustc-link-search=native={}",
+                toolkit.join("lib").to_string_lossy()
+            );
+        }
+        println!("cargo:rustc-link-lib=musart");
+        println!("cargo:rustc-cfg=feature=\"musa\"");
+        println!("cargo:TARGET=musa");
+        return;
     }
 
     // Detect if there is ROCm compiler and engage "rocm" feature accordingly

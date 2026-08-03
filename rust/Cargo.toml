@@ -33,5 +33,6 @@ which = "^4.0"
 # coerse either as an alternative to auto-detection
 cuda = []
 rocm = []
+musa = []
 build = [ "cc" ]
 build-poc = [ "build" ]

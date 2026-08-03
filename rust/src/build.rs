@@ -111,6 +111,21 @@ pub fn ccmd() -> cc::Build {
 
             hipcc
         }
+        "musa" => {
+            let mut mcc = cc::Build::new();
+            mcc.compiler(env::var("MCC").unwrap_or("mcc".to_string()));
+            mcc.cpp(true);
+            common_flags(&mut mcc);
+            mcc.flag("-x").flag("musa");
+            mcc.flag(format!(
+                "--offload-arch={}",
+                env::var("MUSA_ARCH").unwrap_or("mp_31".to_string())
+            ));
+            mcc.flag("-include").flag("util/cuda2musa.hpp");
+            #[cfg(not(target_env = "msvc"))]
+            mcc.flag("-fPIC").flag("-fvisibility=hidden");
+            mcc
+        }
         _ => panic!("impossible DEP_SPPARK_TARGET={}", target),
     }
 }

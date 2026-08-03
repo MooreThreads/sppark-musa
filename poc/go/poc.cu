@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include "util/gpu_backend.hpp"
 #ifdef _MSC_VER
 # define strdup _strdup
 #endif
@@ -15,7 +16,7 @@ struct Error {
 };
 
 extern "C"
-#if defined(_WIN32) && !defined(__HIP_DEVICE_COMPILE__)
+#if defined(_WIN32) && !SPPARK_GPU_DEVICE
 __declspec(dllexport)
 #else
 __attribute__((visibility("default")))

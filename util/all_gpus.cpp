@@ -1,9 +1,11 @@
 #include "gpu_t.cuh"
 
-#if defined(__NVCC__)
+#if SPPARK_CUDA_COMPILER
 # define PROP_MAJOR_MIN 7   // Volta and forward
-#elif defined(__HIPCC__)
+#elif SPPARK_ROCM_COMPILER
 # define PROP_MAJOR_MIN 9   // CDNA/RDNA
+#elif SPPARK_MUSA_COMPILER
+# define PROP_MAJOR_MIN 3   // mp_31 frontier and forward
 #else
 # error "unknown platform"
 #endif

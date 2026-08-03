@@ -4,6 +4,13 @@
 
 #![allow(unexpected_cfgs)]
 
+#[cfg(any(
+    all(feature = "cuda", feature = "rocm"),
+    all(feature = "cuda", feature = "musa"),
+    all(feature = "rocm", feature = "musa")
+))]
+compile_error!("cuda, rocm, and musa features are mutually exclusive");
+
 // Declare C/C++ counterpart as following:
 // extern "C" { fn foobar(...) -> sppark::Error; }
 #[repr(C)]
@@ -56,7 +63,7 @@ macro_rules! cuda_error {
 }
 
 use core::ffi::c_void;
-#[cfg(any(feature = "cuda", feature = "rocm"))]
+#[cfg(any(feature = "cuda", feature = "rocm", feature = "musa"))]
 use core::mem::transmute;
 
 #[repr(C)]
@@ -65,7 +72,7 @@ pub struct Gpu_Ptr<T> {
     phantom: core::marker::PhantomData<T>,
 }
 
-#[cfg(any(feature = "cuda", feature = "rocm"))]
+#[cfg(any(feature = "cuda", feature = "rocm", feature = "musa"))]
 impl<T> Default for Gpu_Ptr<T> {
     fn default() -> Self {
         Self {
@@ -75,7 +82,7 @@ impl<T> Default for Gpu_Ptr<T> {
     }
 }
 
-#[cfg(any(feature = "cuda", feature = "rocm"))]
+#[cfg(any(feature = "cuda", feature = "rocm", feature = "musa"))]
 impl<T> Drop for Gpu_Ptr<T> {
     fn drop(&mut self) {
         extern "C" {
@@ -86,7 +93,7 @@ impl<T> Drop for Gpu_Ptr<T> {
     }
 }
 
-#[cfg(any(feature = "cuda", feature = "rocm"))]
+#[cfg(any(feature = "cuda", feature = "rocm", feature = "musa"))]
 impl<T> Clone for Gpu_Ptr<T> {
     fn clone(&self) -> Self {
         extern "C" {

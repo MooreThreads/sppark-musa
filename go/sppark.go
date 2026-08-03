@@ -236,35 +236,15 @@ func is_arch_native(custom_args... string) bool {
 }
 
 func build(dst string, src string, custom_args ...string) bool {
-    nvcc, ok := os.LookupEnv("NVCC")
-    if !ok {
-        nvcc = "nvcc"
-    }
-    nvcc, _ = exec.LookPath(nvcc)
-
-    hipcc, ok := os.LookupEnv("HIPCC")
-    if !ok {
-        hipcc = "hipcc"
-    }
-    hipcc, _ = exec.LookPath(hipcc)
-
-    if len(nvcc) == 0 && len(hipcc) == 0 {
-        log.Fatal("no CUDA or ROCm compiler found")
+    backend, err := selectGpuBackend()
+    if err != nil {
+        log.Print(err)
         return false
     }
-
-    if len(nvcc) != 0 && len(hipcc) != 0 {
-        cmd := exec.Command(nvcc, filepath.Join(SrcRoot, "rust", "src", "cuda_available.cpp"),
-                                  "-o", "cuda_available.exe")
-        if out, err := cmd.CombinedOutput(); err != nil {
-            log.Fatal(cmd.String(), "\n", string(out))
-            return false
-        }
-        cmd = exec.Command("./cuda_available.exe")
-        if err := cmd.Run(); err != nil {
-            nvcc = ""
-        }
-        os.Remove("cuda_available.exe")
+    nvcc := backend.compiler
+    hipcc := ""
+    if backend.name == "rocm" {
+        hipcc = backend.compiler
     }
 
     cc, ok := os.LookupEnv("CC")
@@ -296,7 +276,7 @@ func build(dst string, src string, custom_args ...string) bool {
     args = append(args, "-DTAKE_RESPONSIBILITY_FOR_ERROR_MESSAGE")
     args = append(args, filepath.Join(SrcRoot, "util", "all_gpus.cpp"))
 
-    if len(nvcc) != 0 {
+    if backend.name == "cuda" {
         if runtime.GOOS != "windows" {
             if cxx, ok := os.LookupEnv("CXX"); ok {
                 args = append(args, "-ccbin", cxx)
@@ -323,7 +303,7 @@ func build(dst string, src string, custom_args ...string) bool {
             }
         }
         args = append(args, "-cudart=shared")
-    } else {
+    } else if backend.name == "rocm" {
         nvcc = hipcc
         if runtime.GOOS != "windows" {
             args = append(args, "-fPIC", "-fvisibility=hidden", "-Wl,-Bsymbolic")
@@ -351,22 +331,38 @@ func build(dst string, src string, custom_args ...string) bool {
         if runtime.GOOS == "windows" {
             args = append(args, "-Wl,-nodefaultlib:libcmt", "-lmsvcrt")
         }
+    } else {
+        if runtime.GOOS != "linux" {
+            log.Print("MUSA backend currently supports Linux only")
+            return false
+        }
+        toolkit := filepath.Dir(filepath.Dir(nvcc))
+        args = append(args, "-fPIC", "-fvisibility=hidden", "-Wl,-Bsymbolic")
+        args = append([]string{"-x", "musa", "-include", "util/cuda2musa.hpp"}, args...)
+        args = append(args, "--offload-arch=mp_31")
+        args = append(args, "-x", "none", "assembly.o", "cpuid.o")
+        args = append(args, "-L"+filepath.Join(toolkit, "lib"), "-lmusart")
+        args = append(args, "-Wl,-rpath,"+filepath.Join(toolkit, "lib"))
     }
 
     src = filepath.Dir(src)
     for _, arg := range custom_args {
         if strings.HasPrefix(arg, "-") {
-            if nvcc == hipcc && strings.HasPrefix(arg, "--offload-arch=") {
+            if backend.name == "rocm" && strings.HasPrefix(arg, "--offload-arch=") {
                 args = append(args, arg)
-            } else if nvcc != hipcc || !strings.HasPrefix(arg, "-arch=") {
+            } else if backend.name == "cuda" || !strings.HasPrefix(arg, "-arch=") {
                 args = append(args, arg)
             }
         } else if strings.HasPrefix(arg, "?cuda-") {
-            if nvcc != hipcc {
+            if backend.name == "cuda" {
                 args = append(args, arg[5:])
             }
         } else if strings.HasPrefix(arg, "?rocm-") {
-            if nvcc == hipcc {
+            if backend.name == "rocm" {
+                args = append(args, arg[5:])
+            }
+        } else if strings.HasPrefix(arg, "?musa-") {
+            if backend.name == "musa" {
                 args = append(args, arg[5:])
             }
         } else {
@@ -385,7 +381,7 @@ func build(dst string, src string, custom_args ...string) bool {
     }
 
     cmd = exec.Command(nvcc, args...)
-    if nvcc == hipcc {
+    if backend.name == "rocm" {
         cmd.Env = append(os.Environ(), "HIP_PLATFORM=amd")
     }
 
