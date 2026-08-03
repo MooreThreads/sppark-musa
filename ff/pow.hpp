@@ -5,7 +5,7 @@
 #ifndef __SPPARK_FF_POW_HPP__
 #define __SPPARK_FF_POW_HPP__
 
-#if defined(__CUDACC__) || defined(__HIPCC__)
+#if defined(__CUDACC__) || defined(__HIPCC__) || defined(__MUSACC__)
 # define inline __host__ __device__ __forceinline__
 #endif
 
@@ -36,7 +36,7 @@ inline T& pow_byref(T& val, U p)
     return val;
 }
 
-#if defined(__CUDACC__) || defined(__HIPCC__)
+#if defined(__CUDACC__) || defined(__HIPCC__) || defined(__MUSACC__)
 /*
  * This is meant to be used for code size optimization by deduplicating
  * otherwise inlined pow_byref.
@@ -74,7 +74,7 @@ inline T& pow_byref(T& val, int p)
     return val;
 }
 
-#if defined(__CUDACC__) || defined(__HIPCC__)
+#if defined(__CUDACC__) || defined(__HIPCC__) || defined(__MUSACC__)
 /*
  * This is meant to be used for code size optimization by deduplicating
  * otherwise inlined pow_byref.

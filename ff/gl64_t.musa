@@ -1,0 +1,238 @@
+// Copyright Supranational LLC
+// Licensed under the Apache License, Version 2.0, see LICENSE for details.
+// SPDX-License-Identifier: Apache-2.0
+
+#if (defined(__MUSACC__) || defined(SPPARK_GL64_HOST_TEST)) && \
+    !defined(__SPPARK_FF_GL64_T_MUSA__)
+#define __SPPARK_FF_GL64_T_MUSA__
+
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+
+#if defined(SPPARK_GL64_HOST_TEST) && !defined(__MUSACC__)
+# define __host__
+# define __device__
+# define __forceinline__
+# define SPPARK_MUSA_GL64_HOST_ONLY 1
+#endif
+
+#include "pow.hpp"
+
+#define SPPARK_GL64_INLINE __host__ __device__ __forceinline__
+
+// Portable Goldilocks arithmetic for MUSA.  This implementation intentionally
+// contains no PTX or AMD GCN assembly and relies only on C++ unsigned overflow
+// and the compiler's 128-bit integer lowering.
+class gl64_t {
+private:
+    uint64_t val;
+
+    SPPARK_GL64_INLINE static uint64_t add_mod(uint64_t a, uint64_t b)
+    {
+        const uint64_t sum = a + b;
+        const uint64_t carry = sum < a;
+        uint64_t ret = sum + carry * 0xffffffffULL;
+        if (ret >= MOD)
+            ret -= MOD;
+        return ret;
+    }
+
+    SPPARK_GL64_INLINE static uint64_t sub_mod(uint64_t a, uint64_t b)
+    {
+        const uint64_t borrow = a < b;
+        return a - b - borrow * 0xffffffffULL;
+    }
+
+    SPPARK_GL64_INLINE static uint64_t reduce128(unsigned __int128 value)
+    {
+        const uint64_t lo = static_cast<uint64_t>(value);
+        const uint64_t hi = static_cast<uint64_t>(value >> 64);
+        const uint64_t hi_lo = static_cast<uint32_t>(hi);
+        const uint64_t hi_hi = hi >> 32;
+
+        // 2^64 == 2^32 - 1 (mod p), expanded in 32-bit halves to
+        // avoid device-side 128-bit division.
+        uint64_t ret = add_mod(lo, hi_lo << 32);
+        ret = sub_mod(ret, hi_lo);
+        return sub_mod(ret, hi_hi);
+    }
+
+    SPPARK_GL64_INLINE void mul(const gl64_t& b)
+    {   val = reduce128(static_cast<unsigned __int128>(val) * b.val);   }
+
+    SPPARK_GL64_INLINE void mul(uint32_t b)
+    {   val = reduce128(static_cast<unsigned __int128>(val) * b);   }
+
+public:
+    using mem_t = gl64_t;
+    static const uint32_t degree = 1;
+    static const unsigned nbits = 64;
+    static const uint64_t MOD = 0xffffffff00000001ULL;
+
+    SPPARK_GL64_INLINE static constexpr size_t bit_length() { return 64; }
+    SPPARK_GL64_INLINE uint64_t& operator[](size_t) { return val; }
+    SPPARK_GL64_INLINE const uint64_t& operator[](size_t) const { return val; }
+    SPPARK_GL64_INLINE size_t len() const { return 1; }
+
+    SPPARK_GL64_INLINE gl64_t() {}
+#if defined(__MUSA_ARCH__)
+    SPPARK_GL64_INLINE gl64_t(uint64_t a) : val(a) { to(); }
+#else
+    __host__ constexpr gl64_t(uint64_t a) : val(a) {}
+#endif
+    SPPARK_GL64_INLINE gl64_t(const uint64_t* p) : val(*p) { to(); }
+
+    SPPARK_GL64_INLINE operator uint64_t() const { return val; }
+    SPPARK_GL64_INLINE void store(uint64_t* p) const { *p = val; }
+
+    SPPARK_GL64_INLINE gl64_t& operator+=(const gl64_t& b)
+    {
+        val = add_mod(val, b.val);
+        return *this;
+    }
+    friend SPPARK_GL64_INLINE gl64_t operator+(gl64_t a, const gl64_t& b)
+    { return a += b; }
+
+    SPPARK_GL64_INLINE gl64_t& operator-=(const gl64_t& b)
+    {
+        val = sub_mod(val, b.val);
+        return *this;
+    }
+    friend SPPARK_GL64_INLINE gl64_t operator-(gl64_t a, const gl64_t& b)
+    { return a -= b; }
+
+    SPPARK_GL64_INLINE gl64_t& operator<<=(unsigned l)
+    { while (l--) *this += *this; return *this; }
+    friend SPPARK_GL64_INLINE gl64_t operator<<(gl64_t a, unsigned l)
+    { return a <<= l; }
+
+    SPPARK_GL64_INLINE gl64_t& operator>>=(unsigned r)
+    {
+        while (r--) {
+            unsigned __int128 wide = val;
+            if (val & 1)
+                wide += MOD;
+            val = static_cast<uint64_t>(wide >> 1);
+        }
+        return *this;
+    }
+    friend SPPARK_GL64_INLINE gl64_t operator>>(gl64_t a, unsigned r)
+    { return a >>= r; }
+
+    SPPARK_GL64_INLINE gl64_t& cneg(bool flag)
+    { if (flag && val != 0) val = MOD - val; return *this; }
+    static SPPARK_GL64_INLINE gl64_t cneg(gl64_t a, bool flag)
+    { return a.cneg(flag); }
+    SPPARK_GL64_INLINE gl64_t operator-() const { return cneg(*this, true); }
+
+    static SPPARK_GL64_INLINE gl64_t one() { return gl64_t(1); }
+    SPPARK_GL64_INLINE bool is_zero() const { return val == 0; }
+    SPPARK_GL64_INLINE bool is_one() const { return val == 1; }
+    SPPARK_GL64_INLINE void zero() { val = 0; }
+
+    friend SPPARK_GL64_INLINE gl64_t czero(const gl64_t& a, int set_z)
+    { return set_z ? gl64_t(uint64_t(0)) : a; }
+    static SPPARK_GL64_INLINE gl64_t csel(const gl64_t& a, const gl64_t& b,
+                                         int sel_a)
+    { return sel_a ? a : b; }
+
+    friend SPPARK_GL64_INLINE gl64_t operator*(gl64_t a, const gl64_t& b)
+    { a.mul(b); return a; }
+    SPPARK_GL64_INLINE gl64_t& operator*=(const gl64_t& b)
+    { mul(b); return *this; }
+    friend SPPARK_GL64_INLINE gl64_t operator*(gl64_t a, uint32_t b)
+    { a.mul(b); return a; }
+    SPPARK_GL64_INLINE gl64_t& operator*=(uint32_t b)
+    { mul(b); return *this; }
+
+    SPPARK_GL64_INLINE gl64_t& operator^=(uint32_t p)
+    { return pow_byref(*this, p); }
+    friend SPPARK_GL64_INLINE gl64_t operator^(gl64_t a, uint32_t p)
+    { return a ^= p; }
+    SPPARK_GL64_INLINE gl64_t operator()(uint32_t p) { return *this ^ p; }
+    SPPARK_GL64_INLINE gl64_t& operator^=(int p) { return pow_byref(*this, p); }
+    friend SPPARK_GL64_INLINE gl64_t operator^(gl64_t a, int p)
+    { return a ^= p; }
+    SPPARK_GL64_INLINE gl64_t operator()(int p) { return *this ^ p; }
+    friend SPPARK_GL64_INLINE gl64_t sqr(gl64_t a) { return a.sqr(); }
+    SPPARK_GL64_INLINE gl64_t& sqr() { mul(*this); return *this; }
+
+    SPPARK_GL64_INLINE void to() { if (val >= MOD) val -= MOD; }
+    SPPARK_GL64_INLINE void from() {}
+
+    template<size_t T>
+    static SPPARK_GL64_INLINE gl64_t dot_product(const gl64_t a[T],
+                                                 const uint8_t b[T])
+    {
+        gl64_t ret(uint64_t(0));
+        for (size_t i = 0; i < T; i++)
+            ret += a[i] * static_cast<uint32_t>(b[i]);
+        return ret;
+    }
+
+    template<size_t T>
+    static SPPARK_GL64_INLINE gl64_t dot_product(const gl64_t a[T],
+                                                 const gl64_t b[T])
+    {
+        gl64_t ret(uint64_t(0));
+        for (size_t i = 0; i < T; i++)
+            ret += a[i] * b[i];
+        return ret;
+    }
+
+    SPPARK_GL64_INLINE gl64_t reciprocal() const
+    {
+        gl64_t base = *this, ret = one();
+        uint64_t p = MOD - 2;
+        while (p) {
+            if (p & 1) ret *= base;
+            p >>= 1;
+            if (p) base.sqr();
+        }
+        return ret;
+    }
+    friend SPPARK_GL64_INLINE gl64_t operator/(int one, const gl64_t& a)
+    { assert(one == 1); return a.reciprocal(); }
+    friend SPPARK_GL64_INLINE gl64_t operator/(const gl64_t& a,
+                                               const gl64_t& b)
+    { return a * b.reciprocal(); }
+    SPPARK_GL64_INLINE gl64_t& operator/=(const gl64_t& a)
+    { return *this *= a.reciprocal(); }
+
+    SPPARK_GL64_INLINE gl64_t heptaroot() const
+    {
+        gl64_t base = *this, ret = one();
+        uint64_t p = 0x92492491b6db6db7ULL;
+        while (p) {
+            if (p & 1) ret *= base;
+            p >>= 1;
+            if (p) base.sqr();
+        }
+        return ret;
+    }
+
+    SPPARK_GL64_INLINE void shfl_bfly(uint32_t lane_mask)
+    {
+#if defined(__MUSA_ARCH__)
+        val = __shfl_xor_sync(0xffffffffU, val, lane_mask);
+#else
+        (void)lane_mask;
+#endif
+    }
+
+    friend SPPARK_GL64_INLINE bool operator==(gl64_t a, gl64_t b)
+    { return a.val == b.val; }
+    friend SPPARK_GL64_INLINE bool operator!=(gl64_t a, gl64_t b)
+    { return a.val != b.val; }
+};
+
+#undef SPPARK_GL64_INLINE
+#if defined(SPPARK_MUSA_GL64_HOST_ONLY)
+# undef SPPARK_MUSA_GL64_HOST_ONLY
+# undef __forceinline__
+# undef __device__
+# undef __host__
+#endif
+
+#endif

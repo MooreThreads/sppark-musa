@@ -5,7 +5,7 @@
 #ifndef __NTT_KERNELS_CU__
 #define __NTT_KERNELS_CU__
 
-#if defined(__NVCC__)
+#if SPPARK_CUDA_COMPILER || SPPARK_MUSA_COMPILER
 # include <cooperative_groups.h>
 #elif defined(__HIPCC__)
 # include <hip/hip_cooperative_groups.h>
@@ -120,7 +120,7 @@ void bit_rev_permutation_z(fr_t* out, const fr_t* in, uint32_t lg_domain_size)
         for (uint32_t i = 0; i < Z_COUNT; i++)
             out[i * step + base_idx] = xchg[gid][rev][i];
 
-#ifdef __CUDA_ARCH__
+#if SPPARK_CUDA_DEVICE
     } while (Z_COUNT <= WARP_SZ && (tid += blockDim.x*gridDim.x) < step);
     // without "Z_COUNT <= WARP_SZ" compiler spills 128 bytes to stack :-(
 #else

@@ -12,7 +12,7 @@
 #include <util/rusterror.h>
 #include <util/gpu_t.cuh>
 
-#if defined(__NVCC__)
+#if SPPARK_CUDA_COMPILER || SPPARK_MUSA_COMPILER
 # define noop()
 #elif defined(__HIPCC__)
 # pragma clang diagnostic push
@@ -46,7 +46,7 @@ protected:
         const uint32_t Z_COUNT = 256 / sizeof(fr_t);
         const uint32_t warpSize = gpu_props(stream).warpSize;
         const uint32_t bsize = Z_COUNT>warpSize ? Z_COUNT : warpSize;
-#ifdef __HIPCC__
+#if SPPARK_ROCM_COMPILER
         const uint32_t lg_switch = 17;
 #else
         const uint32_t lg_switch = 32;

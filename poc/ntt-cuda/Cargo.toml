@@ -22,6 +22,7 @@ bn254 = []
 gl64 = []
 bb31 = []
 quiet = []
+musa = [ "sppark/musa" ]
 
 [dependencies]
 blst = "~0.3.11"

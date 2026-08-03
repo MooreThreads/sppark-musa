@@ -8,7 +8,7 @@
 #include <cstddef>
 #include <vector>
 
-#if defined(__CUDACC__) || defined(__HIPCC__)
+#if defined(__CUDACC__) || defined(__HIPCC__) || defined(__MUSACC__)
 # ifdef inline
 #  define slice_t_saved_inline inline
 #  undef inline
@@ -43,7 +43,7 @@ public:
     inline T& operator[](size_t i)  { return const_cast<T*>(this->ptr)[i]; }
 };
 
-#if defined(__CUDACC__) || defined(__HIPCC__)
+#if defined(__CUDACC__) || defined(__HIPCC__) || defined(__MUSACC__)
 # undef inline
 # ifdef slice_t_saved_inline
 #  define inline slice_t_saved_inline

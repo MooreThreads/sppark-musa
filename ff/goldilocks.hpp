@@ -5,10 +5,14 @@
 #if !defined(__SPPARK_FF_BABY_GOLDILOCKS_HPP__)
 #define __SPPARK_FF_BABY_GOLDILOCKS_HPP__
 
-#ifdef __CUDACC__
+#include <util/gpu_backend.hpp>
+
+#if SPPARK_CUDA_COMPILER
 # include "gl64_t.cuh"  // CUDA device-side field types
-#elif defined(__HIPCC__)
+#elif SPPARK_ROCM_COMPILER
 # include "gl64_t.hip"
+#elif SPPARK_MUSA_COMPILER
+# include "gl64_t.musa"
 #endif
 
 namespace goldilocks {

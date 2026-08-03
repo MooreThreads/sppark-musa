@@ -7,7 +7,7 @@
 
 #include <cstddef>
 
-#if !defined(__CUDACC__) && !defined(__HIPCC__)
+#if !defined(__CUDACC__) && !defined(__HIPCC__) && !defined(__MUSACC__)
 # define __host__
 # define __device__
 #endif
@@ -25,7 +25,7 @@ public:
     vec2d_t(void* data, dim_t x) : dim_x(x), dim_y_owned(0), ptr((T*)data) {}
     vec2d_t(dim_t x, size_t y) : dim_x(x), dim_y_owned(((dim_t)y<<1) | 1), ptr(new T[x*y]) {}
     vec2d_t() : dim_x(0), dim_y_owned(0), ptr(nullptr) {}
-#if !defined(__CUDA_ARCH__) && !defined(__HIP_DEVICE_COMPILE__)
+#if !defined(__CUDA_ARCH__) && !defined(__HIP_DEVICE_COMPILE__) && !defined(__MUSA_ARCH__)
     vec2d_t(const vec2d_t& other) { *this = other; dim_y_owned &= ((dim_t)0-1) << 1; }
     ~vec2d_t() { if (dim_y_owned&1) delete[] ptr; }
 
@@ -50,7 +50,7 @@ public:
     inline dim_t x() const { return dim_x; }
 };
 
-#if !defined(__CUDACC__) && !defined(__HIPCC__)
+#if !defined(__CUDACC__) && !defined(__HIPCC__) && !defined(__MUSACC__)
 # undef __device__
 # undef __host__
 #endif
