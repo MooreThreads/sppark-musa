@@ -1,61 +1,130 @@
-# sppark
+# sppark-musa
 
-sppark (pronounced 'spark') is **S**upranational's **p**erformance **p**rimitives for **ar**guments of **k**nowledge such as SNARKs and STARKs. The library focuses on accelerating the most computationally expensive pieces of zero-knowledge proofs generation such as multi-scalar multiplication (MSM), number theoretic transform (NTT), arithmetic hashes, and more. The library is a collection of CUDA/C++ templates that can be instantiated for a range of finite fields and elliptic curves.
+`sppark-musa` is the Moore Threads MUSA-maintained fork of
+[supranational/sppark](https://github.com/supranational/sppark), a collection
+of C++ templates and language bindings for high-performance operations used by
+zero-knowledge proof systems. The library contains reusable finite-field,
+elliptic-curve, multi-scalar multiplication (MSM), and number-theoretic
+transform (NTT) building blocks.
 
-## Table of Contents
+This fork keeps the upstream CUDA and ROCm implementations and adds a MUSA
+backend for the supported integration paths. Moore Threads maintains the fork
+so applications can adapt the same primitives to MUSA toolchains while
+retaining the upstream source organization and APIs.
 
-  * [Status](#status)
-  * [General notes on implementation](#general-notes-on-implementation)
-  * [Platform and Language Compatibility](#platform-and-language-compatibility)
-  * [Introductory Integration Tutorial](#introductory-integration-tutorial)
-    + [Multi-scalar Multiplication (MSM)](#multi-scalar-multiplication-msm)
-  * [Repository Structure](#repository-structure)
-  * [Performance](#performance)
-  * [License](#license)
+## Source lineage
 
-## Status
+- Upstream project: `https://github.com/supranational/sppark`
+- Inherited upstream version: `v0.1.15`
+- Upstream baseline: `17278d74295392f9813f009300b257a688422b7a`
+- MUSA adaptation ref: `sppark-musa`
 
-**This library is under active development [with a list of planned significant improvements]**
+The upstream implementation remains the reference for the CUDA and ROCm
+paths. Changes in this fork are isolated around compiler selection, MUSA API
+compatibility, and the MUSA field implementation.
 
-## General notes on implementation
+## MUSA adaptation
 
-The goal of the sppark library is to provide foundational components for applications and other libraries that require high-performance operations for zero-knowledge proofs generation.
+The MUSA path is selected explicitly in the Rust and Go integration layers:
 
-## Platform and Language Compatibility
+- Rust exposes the `musa` feature and uses `MCC` and `MUSA_ARCH` to select the
+  MUSA compiler and device target. The default device target is `mp_31`.
+- The Go bridge accepts `SPPARK_BACKEND=musa` and `MCC`, and links the MUSA
+  runtime for Linux builds.
+- `util/cuda2musa.hpp` provides the MUSA spelling boundary for the APIs used
+  by the port, while `util/gpu_backend.hpp` centralizes backend identity.
+- `ff/gl64_t.musa` supplies the MUSA implementation of the Goldilocks field;
+  the existing CUDA and ROCm field sources remain available for their
+  respective backends.
+- The NTT Cargo package forwards its `musa` feature to the core `sppark`
+  crate. Existing CUDA and ROCm feature paths are retained.
 
-This library primarily supports x86_64 with Nvidia's Volta+ GPU hardware platforms on Linux and Windows operating systems. A limited support for AMD's RDNA and CDNA GPUs is provided. Non-GPU portions can be utilized even on ARM64, and additionally on Mac.
+The MUSA integration is intended for Linux systems with a compatible Moore
+Threads toolchain. Its source-level scope is deliberately bounded; consumers
+should select and review the field and operation paths they use.
 
-We show how to interface with Rust and Go. Caveat lector. Achieving highest possible GPU performance requires interfacing with target language memory management, possibly its async facilities, and might even require changes to object's data layout. These are hard to generalize and consequently are also a matter of discussion, likely on a case-by-case basis.
+## Requirements
 
-## Introductory Integration Tutorial
+For the MUSA path, install:
 
-[TBD]
+- a MUSA toolkit providing `mcc` and the `musart` runtime;
+- Rust and Cargo for the Rust crates;
+- a C/C++ toolchain and CMake-free Cargo build environment;
+- Go and cgo when using the Go bridge or Go proof-of-concept programs.
 
-### Multi-scalar Multiplication (MSM)
+The CUDA and ROCm paths continue to use their corresponding upstream
+toolchains. Rust and Go dependencies are declared in the package manifests and
+are resolved by their normal package managers.
 
-[TBD]
+## Building
 
-## Repository Structure
+From the repository root, select the MUSA compiler and target before building
+the Rust core crate:
 
-**Root** - Contains various configuration files, documentation, licensing.
-* **conversion** -
-* **ec** - Contains templates for elliptic curve operations such as addition and doubling for different point representations.
-* **ff** - Contains CUDA template[s] for finite field operations and instantiations of a variety of fields.
-* **hash** -
-* **memory** -
-* **merkle** -
-* **msm** - Contains multi-scalar multiplication template[s] that can be instantiated for a variety of elliptic curves such as BLS12-381 and the Pasta curves
-* **ntt** - Contains NTT CUDA kernels.
-* **poc** - Proof-of-concept implementations, including benchmarking.
-* **rust** - Houses Rust crate definition.
-* **util** - General-purpose helper classes.
+```sh
+export MCC=/path/to/musa/bin/mcc
+export MUSA_ARCH=mp_31
+cargo build --manifest-path rust/Cargo.toml --features musa
+```
 
-## Performance
+To build the NTT proof-of-concept crate for the Goldilocks field:
 
-Simplified benchmark results can be collected by end users by exercising proof-of-concept applications. "Simplified" refers to the fact that there is always room for application-specific tuning. Intention is to give a general "taste." Just in case, benchmarks are likely to require high-end GPUs and one can't expect that they will execute on a laptop unmodified.
+```sh
+cargo build --manifest-path poc/ntt-cuda/Cargo.toml \
+  --features 'musa,gl64'
+```
 
-Caveat lector. As you compile PoC applications you might get warnings about not FFI-safe types. Alarming as they are, the fact that tests pass means that it works out nevertheless. However, this is **not** to say that they should be ignored and that one can proceed to build production code upon it. We intend to work with external software maintainers to resolve these warnings.
+The Go bridge selects the backend through the environment and can be built from
+its module directory:
 
-## License
+```sh
+cd poc/go
+export SPPARK_BACKEND=musa
+export MCC=/path/to/musa/bin/mcc
+go test ./...
+```
 
-The sppark library is licensed under the [Apache License Version 2.0](LICENSE) software license.
+Use `MUSA_ARCH` to target a supported MUSA architecture. The CUDA and ROCm
+builds continue to use their existing upstream feature and compiler settings;
+do not combine more than one of `cuda`, `rocm`, and `musa` in a single Rust
+build.
+
+## Using the library
+
+The Rust crate exposes the common error, device-pointer, and NTT interfaces
+used by the proof-of-concept packages. The NTT package provides forward,
+inverse, and coset transforms through its Rust API. The Go package loads a
+shared object next to the calling executable and exposes wrappers through
+cgo; see [`go/README.md`](go/README.md) and the examples under `poc/` for the
+integration shape.
+
+Applications should choose a field feature supported by their operation and
+pass the device ordinal expected by their deployment. Backend selection is
+explicit when multiple GPU toolchains are installed.
+
+## Repository layout
+
+- `ec/`, `ff/`: elliptic-curve and finite-field templates;
+- `msm/`: multi-scalar multiplication templates;
+- `ntt/`: NTT kernels and parameter data;
+- `polynomial/`: polynomial helper operations;
+- `util/`: backend, device, error, and utility helpers;
+- `rust/`: the Rust crate and compiler integration;
+- `go/`: the reusable Go bridge;
+- `poc/`: Rust and Go proof-of-concept integrations;
+- `tests/`: source-level and backend-selection checks.
+
+## Contributing
+
+Keep backend-specific changes behind the corresponding feature or backend
+guard, preserve the CUDA and ROCm paths, and document any MUSA compiler or
+architecture assumptions. Changes should include focused source-level coverage
+when they alter backend selection or public interfaces. Please retain upstream
+copyright and attribution notices in modified files.
+
+## Attribution and license
+
+This project retains the upstream sppark structure and attribution. The Moore
+Threads fork is distributed under the Apache 2.0 terms in the root
+[`LICENSE`](LICENSE) file; component notices in the source tree remain part of
+the corresponding components.
